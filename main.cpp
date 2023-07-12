@@ -2,6 +2,10 @@
 #include <vector>
 #include <ctime>
 #include <random>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
+#include <string>
 
 using namespace std;
 
@@ -90,9 +94,25 @@ public:
         logActivity("Added " + to_string(item.quantity) + " " + item.name + "(s) to the inventory.");
     }
 
+    // Display items
+    void displayItems()
+    {
+        int counter = 0;
+        cout << endl
+             << setw(20) << "\t\t\t___Inventory___\n\n";
+        cout << left << setw(5) << "S/N" << setw(15) << "Product Name" << setw(10) << "Price" << setw(10) << "In Stock" << endl;
+        cout << left << setw(15) << "-------------------------------------\n";
+        for (auto &product : inventory)
+        {
+            cout << setw(5) << ++counter << setw(15) << product.name << setw(10) << product.price << setw(10) << product.quantity << endl
+                 << endl;
+        }
+    }
+
     // Log activity
     void logActivity(const string &message)
     {
+        cout << message << endl;
         time_t now = time(0);
         string timestamp = ctime(&now);
         activityLog.push_back(timestamp.substr(0, timestamp.length() - 1) + " - " + message);
@@ -127,8 +147,15 @@ public:
         this->loggedIn = false;
     }
 
+    Cashier(string name, string id)
+    {
+        this->name = name;
+        this->id = id;
+        this->loggedIn = false;
+    }
+
     // Process sale
-    void processSale(Shop &shop, const string &productName, int quantity);
+    void processSale(Shop &shop);
 
     void restock(Shop &shop)
     {
@@ -175,35 +202,144 @@ public:
 int main()
 {
     Shop shop;
-    Cashier cashier1("John");
-    Cashier cashier2("Alice");
     Cashier currentCashier("");
-    // Add cashiers
-    shop.addCashier(cashier1);
-    shop.addCashier(cashier2);
-    cout << cashier1.id << endl;
-    cout << cashier2.id << endl;
 
-    cout << "Welcome to The Shop" << endl;
-    char role;
-    cout << "1. Worker\n2. Customer" << endl;
-    cin >> role;
-
-    if (role == '1')
+    // Populate the store inventory
+    ifstream inputFile("inventory.txt"); // Open file for reading
+    if (inputFile.is_open())
     {
-        currentCashier = shop.loginCashier();
-        cout << "ID: " << currentCashier.id << endl;
-        cout << "What do you want to do?\n1. Update Inventory\n2. Process a sale\n3. Exit\n";
-        char option;
-        cin >> option;
-        // ...
-        return 0;
+        string line;
+        while (getline(inputFile, line))
+        {
+            istringstream iss(line); // Create an input string stream
+            string name;
+            float price;
+            int stock;
+            // let's push the items to the inventory
+
+            if (iss >> name >> price >> stock)
+            {
+                // Values successfully extracted and stored in variables
+                Product product(name, stock, price);
+                shop.addItem(product);
+            }
+            else
+            {
+                cout << "Failed to extract values from the line." << endl;
+                return 1;
+            }
+        }
+        cout << endl;
+        inputFile.close(); // Close the file
+    }
+    else
+    {
+        cout << "Unable to open the file." << endl;
     }
 
-    if (role == '2')
+    // Set up cashier database
+    ifstream cashierFile("cashier_db.txt"); // Open file for reading
+    if (cashierFile.is_open())
     {
-        cout << "What goods would you like to buy?...// then we show them the goods, they buy, and we move";
-    };
+        string line;
+        while (getline(cashierFile, line))
+        {
+            istringstream iss(line); // Create an input string stream
+            string name;
+            string id;
+
+            if (iss >> name >> id)
+            {
+                // Values successfully extracted and stored in variables
+                cout << "Name: " << name << "\tID: " << id << endl;
+            }
+            else
+            {
+                cout << "Failed to extract values from the line." << endl;
+                return 1;
+            }
+
+            Cashier cashier(name, id);
+            shop.addCashier(cashier);
+        }
+        cashierFile.close(); // Close the file
+    }
+    else
+    {
+        cout << "Unable to open the file." << endl;
+    }
+
+    cout << "Welcome to The Shop" << endl
+         << endl;
+    char role;
+
+    do
+    {
+        cout << "What are you?\n"
+             << "1. Worker\n2. Customer\n3.Exit" << endl;
+        cin >> role;
+
+        if (role == '1')
+        {
+            currentCashier = shop.loginCashier();
+            cout << "ID: " << currentCashier.id << endl;
+            int option;
+            do
+            {
+                cout << "\nWhat do you want to do?\n1. Restock Inventory\n2. Process a sale\n3. Exit\n";
+                cin >> option;
+                switch (option)
+                {
+                case 1:
+                    currentCashier.restock(shop);
+                    break;
+                case 2:
+                    currentCashier.processSale(shop);
+                    break;
+                }
+            } while (option != 3);
+        }
+        if (role == '2')
+        {
+            shop.displayItems();
+            string choice;
+
+            do
+            {
+                cout << "\n[e] - Exit\nWhat would you like to buy? (Enter S/N from table or type name): ";
+                cin >> choice;
+                if (choice == "e")
+                    break;
+                Product *productToBuy;
+                try
+                {
+                    int sn = stoi(choice);
+                    int counter = 0;
+                    for (auto &product : shop.inventory)
+                    {
+                        if (++counter == sn)
+                            productToBuy = &product;
+                    }
+                }
+                catch (const std::exception &e)
+                {
+                    for (auto &product : shop.inventory)
+                    {
+                        if (product.name == choice)
+                            productToBuy = &product;
+                    }
+                }
+
+                cout << "Quantity of " << productToBuy->name << "(s) to buy: ";
+                int quantity;
+                cin >> quantity;
+                if (productToBuy->quantity >= quantity)
+                    cout << "Successfully purchased " << productToBuy->name << " for $" << productToBuy->price * quantity << endl;
+                else
+                    cout << "Insufficient amount in stock!" << endl;
+            } while (choice != "e");
+        }
+    } while (role != '3');
 
     // Login cashiers
     //    shop.loginCashier();
@@ -235,13 +371,19 @@ int main()
 }
 
 // Process sale
-void Cashier::processSale(Shop &shop, const string &productName, int quantity)
+void Cashier::processSale(Shop &shop)
 {
     if (!this->loggedIn)
     {
         cout << "You are not logged in\n";
         return;
     }
+    string productName;
+    int quantity;
+    cout << "Name of product to be sold: ";
+    cin >> productName;
+    cout << "Quantity sold: ";
+    cin >> quantity;
     for (auto &product : shop.inventory)
     {
         if (product.name == productName)
@@ -268,29 +410,32 @@ void Cashier::processSale(Shop &shop, const string &productName, int quantity)
 Cashier Shop::loginCashier()
 {
     string id;
-    cout << "Enter your id: ";
-    cin >> id;
 
-    for (auto &cashier : cashiers)
+    for (;;)
     {
-        if (cashier.id == id)
+        cout << "Enter your id: ";
+        cin >> id;
+        for (auto &cashier : cashiers)
         {
-            if (!cashier.loggedIn)
+            if (cashier.id == id)
             {
-                cashier.loggedIn = true;
-                cout << cashier.name << endl;
-                logActivity(cashier.name + " logged in.");
-                cout << "Login Successful" << endl;
-                return cashier;
-            }
-            else
-            {
-                cout << "Cashier is already logged in." << endl;
-                return cashier;
+                if (!cashier.loggedIn)
+                {
+                    cashier.loggedIn = true;
+                    cout << cashier.name << endl;
+                    logActivity(cashier.name + " logged in.");
+                    cout << "Login Successful" << endl;
+                    return cashier;
+                }
+                else
+                {
+                    cout << "Cashier is already logged in." << endl;
+                    return cashier;
+                }
             }
         }
+        cout << "Wrong! Try Again\n";
     }
-
     cout << "\nCashier not found." << endl;
 }
 
